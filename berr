@@ -1,11 +1,3 @@
-/*
-  mercado.c
-  Versão: correções e ajustes solicitados pelo usuário.
-  Objetivo: manter o padrão original do projeto, corrigir bugs,
-  implementar carregamento/salvamento de vendas e pagamentos,
-  ajustar reallocs, entradas, formatos e documentar funções.
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -168,6 +160,10 @@ void *xrealloc(void *ptr, size_t nmemb, size_t size);
 int read_int_prompt(const char *prompt);
 float read_float_prompt(const char *prompt);
 void read_line(char *dst, size_t n, const char *prompt);
+int data_no_intervalo(int d, int m, int a, int di, int mi, int ai, int df, int mf, int af);
+
+void carregar_numero_venda_global(void);
+void salvar_numero_venda_global(void);
 
 /* Carregar / salvar */
 void carregar_usuarios();
@@ -243,6 +239,9 @@ void menu_estoque();
 void imprimir_recibo(int numero_venda);
 void menu_fechamento_dia(void);
 void atualizar_status_e_forma_venda(int numero_venda);
+void carregar_numero_venda_global(void);
+void salvar_numero_venda_global(void);
+int data_no_intervalo(int d, int m, int a, int di, int mi, int ai, int df, int mf, int af);
 /* protótipos novos */
 int exige_admin(void);
 int solicitar_confirmacao_admin(void);
@@ -255,6 +254,7 @@ void exibir_lucro_por_setor(void);
 void salvar_lucro_setor_arquivo(void);
 void zerar_lucro_dia_atual(void);
 void carregar_ultimo_lucro_setor(void);
+void ajustar_lucro_pos_desconto(int numero_venda, float valor_desconto);
 
 /* ======================= Implementações ======================= */
 
@@ -292,6 +292,29 @@ void read_line(char *dst, size_t n, const char *prompt) {
     if (prompt && *prompt) printf("%s", prompt);
     if (!fgets(dst, n, stdin)) { dst[0] = '\0'; return; }
     dst[strcspn(dst, "\n")] = '\0';
+}
+
+int data_no_intervalo(int d, int m, int a, int di, int mi, int ai, int df, int mf, int af) {
+    int data = a * 10000 + m * 100 + d;
+    int inicio = ai * 10000 + mi * 100 + di;
+    int fim = af * 10000 + mf * 100 + df;
+    return data >= inicio && data <= fim;
+}
+
+void carregar_numero_venda_global(void) {
+    FILE *f = fopen("numero_venda.txt", "r");
+    if (!f) return;
+    int valor = 0;
+    if (fscanf(f, "%d", &valor) == 1 && valor > 0)
+        numero_venda_global = valor;
+    fclose(f);
+}
+
+void salvar_numero_venda_global(void) {
+    FILE *f = fopen("numero_venda.txt", "w");
+    if (!f) return;
+    fprintf(f, "%d\n", numero_venda_global);
+    fclose(f);
 }
 
 /* ---------- Carregar / salvar (formatos simples pipe-separated) ---------- */
@@ -1171,14 +1194,26 @@ void menu_fechamento_caixa() {
 void menu_relatorios() {
     int op = 0;
     do {
-        printf("\n--- RELATORIOS ---\n1) Clientes\n2) Produtos\n3) Vendas periodo\n4) Faturamento\n5) Dia semana\n0) Voltar\nEscolha: ");
+        printf("\n--- RELATORIOS ---\n");
+        printf("1) Clientes (ordem alfabetica)\n");
+        printf("2) Clientes por periodo\n");
+        printf("3) Produtos (ordem alfabetica)\n");
+        printf("4) Produtos por estoque\n");
+        printf("5) Produtos mais vendidos\n");
+        printf("6) Vendas por periodo\n");
+        printf("7) Faturamento\n");
+        printf("8) Vendas por dia da semana\n");
+        printf("0) Voltar\nEscolha: ");
         if (scanf("%d", &op) != 1) { while(getchar()!='\n'); op = -1; continue; }
         while(getchar()!='\n');
         if (op == 1) listarcl_alfabetica();
-        else if (op == 2) listarpr_alfabetica();
-        else if (op == 3) listarv_periodo();
-        else if (op == 4) listar_faturamento();
-        else if (op == 5) relatorio_dia();
+        else if (op == 2) listar_clperiodo();
+        else if (op == 3) listarpr_alfabetica();
+        else if (op == 4) listarpr_estoque();
+        else if (op == 5) listarpr_maisvendidos();
+        else if (op == 6) listarv_periodo();
+        else if (op == 7) listar_faturamento();
+        else if (op == 8) relatorio_dia();
     } while (op != 0);
 }
 
@@ -1191,6 +1226,7 @@ void sair() {
     salvar_pagamentos();
     salvar_vendas_diarias();
     salvar_estoque_dat();
+    salvar_numero_venda_global();
     exit(0);
 }
 
@@ -1383,7 +1419,7 @@ void criar_estoque_inicial() {
         p.margem_lucro = produtos_iniciais[i].margem_lucro;
         
         Produto *tmp = realloc(produtos, (quantidade_produtos + 1) * sizeof(Produto));
-        if (!tmp) { printf("Erro alocacao estoque inicial\n"); exit(1); }
+        if (!tmp) { printf("Erro de alocacao estoque inicial\n"); exit(1); }
         produtos = tmp;
         produtos[quantidade_produtos++] = p;
     }
@@ -1444,14 +1480,16 @@ int fazer_login(void) {
 int main(void) {
     carregar_usuarios();
     carregar_clientes();
-    carregar_produtos();
-
-    if (!estoque_dat_existe()) {
-        printf("Criando estoque inicial padrao...\n");
-        criar_estoque_inicial();
+    
+    // PRIORIDADE: carregar estoque.dat (mais recente)
+    if (estoque_dat_existe()) {
+        carregar_estoque_dat();
+    } else {
+        carregar_produtos();  // fallback para produtos.txt
+        salvar_estoque_dat(); // cria estoque.dat inicial
     }
-
-    carregar_estoque_dat();
+    
+    carregar_numero_venda_global();
     carregar_vendas();
     carregar_pagamentos();
     carregar_vendas_diarias();
@@ -1794,19 +1832,28 @@ float nova_venda() {
                         ok = 0;
                     }
                 } else if (pg == 3) {
-                    /* NOVO: Pagamento misto */
-                    printf("\nPagamento MISTO\n");
+                    /* Pagamento misto com validação */
+                    printf("\nPagamento MISTO - Total: R$%.2f\n", total_venda);
                     printf("Quanto sera pago em DINHEIRO? R$ ");
                     float parte_dinheiro;
                     if (scanf("%f", &parte_dinheiro) != 1) { while(getchar()!='\n'); continue; }
                     while(getchar()!='\n');
                     
-                    if (parte_dinheiro <= 0.0f || parte_dinheiro > total_venda) {
-                        printf("Valor invalido para pagamento misto.\n");
+                    if (parte_dinheiro <= 0.0f || parte_dinheiro >= total_venda) {
+                        printf("Valor invalido. Deve ser entre R$0.01 e R$%.2f\n", total_venda - 0.01f);
                         continue;
                     }
                     
                     float parte_cartao = total_venda - parte_dinheiro;
+                    printf("Restante em CARTAO: R$%.2f\n", parte_cartao);
+                    printf("Confirmar? (s/n): ");
+                    char conf;
+                    if (scanf(" %c", &conf) != 1) { while(getchar()!='\n'); continue; }
+                    while(getchar()!='\n');
+                    if (conf != 's' && conf != 'S') {
+                        printf("Pagamento cancelado.\n");
+                        continue;
+                    }
                     
                     /* Registra parte em dinheiro */
                     int ok_din = pagamento_dinheiro(parte_dinheiro, sale_num, 1, 0.0f);
@@ -1824,6 +1871,9 @@ float nova_venda() {
                     
                     if (aprovado_cartao == 1) {
                         ok = pagamento_cartao(parte_cartao, sale_num, 1);
+                        if (!ok) {
+                            printf("ERRO: Pagamento misto incompleto! Venda em aberto.\n");
+                        }
                     } else {
                         printf("Pagamento em cartao negado! Venda permanece em aberto.\n");
                         ok = 0;
@@ -1839,6 +1889,7 @@ float nova_venda() {
                     atualizar_status_e_forma_venda(sale_num);
                     if (ok) imprimir_recibo(sale_num);
                     numero_venda_global++;
+                    salvar_numero_venda_global();
                     free(carrinho);
                     printf("Venda %d finalizada.\n", sale_num);
                     return total_venda;
@@ -1848,6 +1899,7 @@ float nova_venda() {
             if (n_itens == 0) { printf("Venda cancelada.\n"); free(carrinho); return 0.0f; }
             atualizar_status_e_forma_venda(sale_num);
             numero_venda_global++;
+            salvar_numero_venda_global();
 
             free(carrinho);
             printf("Venda %d registrada em aberto. Total: R$%.2f\n", sale_num, subtotal);
@@ -1926,47 +1978,182 @@ void listarpr_alfabetica() {
     free(copia);
 }
 
-/* Lista vendas em um período (dia/mes/ano) */
+/* Lista clientes que compraram em um período específico */
+void listar_clperiodo() {
+    if (quantidade_clientes == 0) { printf("Nenhum cliente cadastrado.\n"); return; }
+    if (quantidade_vendas == 0) { printf("Nenhuma venda registrada.\n"); return; }
+
+    int di, mi, ai, df, mf, af;
+    printf("Data inicial (dia mes ano): ");
+    if (scanf("%d %d %d", &di, &mi, &ai) != 3) { while(getchar()!='\n'); printf("Valores invalidos.\n"); return; }
+    printf("Data final (dia mes ano): ");
+    if (scanf("%d %d %d", &df, &mf, &af) != 3) { while(getchar()!='\n'); printf("Valores invalidos.\n"); return; }
+    while(getchar()!='\n');
+
+    int encontrou = 0;
+    printf("\n--- CLIENTES NO PERIODO %02d/%02d/%04d a %02d/%02d/%04d ---\n", di, mi, ai, df, mf, af);
+    for (int i = 0; i < quantidade_clientes; ++i) {
+        float total = 0.0f;
+        for (int j = 0; j < quantidade_vendas; ++j) {
+            if (vendas[j].status_pagamento != 'p') continue;
+            if (vendas[j].cpf_cliente[0] == '\0') continue;
+            if (strcmp(vendas[j].cpf_cliente, clientes[i].cpf) != 0) continue;
+            if (data_no_intervalo(vendas[j].dia, vendas[j].mes, vendas[j].ano, di, mi, ai, df, mf, af))
+                total += vendas[j].total_item;
+        }
+        if (total > 0.0f) {
+            printf("%03d | %-30s | Total: R$%.2f\n", clientes[i].codigo, clientes[i].nome, total);
+            encontrou = 1;
+        }
+    }
+    if (!encontrou) printf("Nenhum cliente com compras no periodo informado.\n");
+}
+
+/* Lista produtos ordenados por quantidade em estoque (menor -> maior) */
+void listarpr_estoque() {
+    if (quantidade_produtos == 0) { printf("Nenhum produto cadastrado.\n"); return; }
+
+    Produto *copia = malloc(sizeof(Produto) * quantidade_produtos);
+    if (!copia) { printf("Falha de memoria.\n"); return; }
+    memcpy(copia, produtos, sizeof(Produto) * quantidade_produtos);
+
+    // Bubble sort por estoque crescente
+    for (int i = 0; i < quantidade_produtos - 1; ++i)
+        for (int j = 0; j < quantidade_produtos - 1 - i; ++j)
+            if (copia[j].estoque > copia[j+1].estoque) {
+                Produto tmp = copia[j];
+                copia[j] = copia[j+1];
+                copia[j+1] = tmp;
+            }
+
+    printf("\n--- PRODUTOS POR ESTOQUE (menor -> maior) ---\n");
+    for (int i = 0; i < quantidade_produtos; ++i) {
+        printf("%03d | %-30s | Est:%4d | Min:%3d | %s\n",
+               copia[i].codigo_produto, copia[i].descricao, copia[i].estoque,
+               copia[i].estoque_minimo, copia[i].categoria);
+    }
+    free(copia);
+}
+
+/* Lista produtos mais vendidos (por quantidade total vendida) */
+void listarpr_maisvendidos() {
+    if (quantidade_produtos == 0) { printf("Nenhum produto cadastrado.\n"); return; }
+    if (quantidade_vendas == 0) { printf("Nenhuma venda registrada.\n"); return; }
+
+    int *quantidades = calloc(quantidade_produtos, sizeof(int));
+    float *totais = calloc(quantidade_produtos, sizeof(float));
+    if (!quantidades || !totais) { 
+        free(quantidades); free(totais); 
+        printf("Falha de memoria.\n"); 
+        return; 
+    }
+
+    // Acumula vendas por produto
+    for (int i = 0; i < quantidade_vendas; ++i) {
+        for (int j = 0; j < quantidade_produtos; ++j) {
+            if (produtos[j].codigo_produto == vendas[i].codigo_produto) {
+                quantidades[j] += vendas[i].quantidade;
+                totais[j] += vendas[i].total_item;
+                break;
+            }
+        }
+    }
+
+    // Cria índices para ordenação
+    int *indices = malloc(sizeof(int) * quantidade_produtos);
+    if (!indices) { 
+        free(quantidades); free(totais); 
+        printf("Falha de memoria.\n"); 
+        return; 
+    }
+    for (int i = 0; i < quantidade_produtos; ++i) indices[i] = i;
+
+    // Ordena índices por quantidade vendida (decrescente)
+    for (int i = 0; i < quantidade_produtos - 1; ++i)
+        for (int j = 0; j < quantidade_produtos - 1 - i; ++j)
+            if (quantidades[indices[j]] < quantidades[indices[j+1]]) {
+                int tmp = indices[j];
+                indices[j] = indices[j+1];
+                indices[j+1] = tmp;
+            }
+
+    printf("\n--- PRODUTOS MAIS VENDIDOS ---\n");
+    int exibiu = 0;
+    for (int i = 0; i < quantidade_produtos; ++i) {
+        int idx = indices[i];
+        if (quantidades[idx] == 0) break;
+        printf("%03d | %-30s | Qtde:%4d | Total: R$%7.2f\n",
+               produtos[idx].codigo_produto, produtos[idx].descricao, 
+               quantidades[idx], totais[idx]);
+        exibiu = 1;
+    }
+    if (!exibiu) printf("Ainda nao houve vendas.\n");
+
+    free(indices);
+    free(quantidades);
+    free(totais);
+}
+
+/* Lista vendas em um período específico */
 void listarv_periodo() {
     if (quantidade_vendas == 0) { printf("Nenhuma venda registrada.\n"); return; }
-    
-    int dia, mes, ano;
-    printf("Informe o dia (1-31): ");
-    if (scanf("%d", &dia) != 1) { while(getchar()!='\n'); printf("Invalido.\n"); return; }
-    printf("Informe o mes (1-12): ");
-    if (scanf("%d", &mes) != 1) { while(getchar()!='\n'); printf("Invalido.\n"); return; }
-    printf("Informe o ano (ex: 2025): ");
-    if (scanf("%d", &ano) != 1) { while(getchar()!='\n'); printf("Invalido.\n"); return; }
+
+    int di, mi, ai, df, mf, af;
+    printf("Data inicial (dia mes ano): ");
+    if (scanf("%d %d %d", &di, &mi, &ai) != 3) { while(getchar()!='\n'); printf("Valores invalidos.\n"); return; }
+    printf("Data final (dia mes ano): ");
+    if (scanf("%d %d %d", &df, &mf, &af) != 3) { while(getchar()!='\n'); printf("Valores invalidos.\n"); return; }
     while(getchar()!='\n');
-    
-    float total = 0.0f;
+
     int encontrou = 0;
-    printf("\n--- VENDAS EM %02d/%02d/%d ---\n", dia, mes, ano);
-    for (int i = 0; i < quantidade_vendas; i++) {
-        if (vendas[i].dia == dia && vendas[i].mes == mes && vendas[i].ano == ano) {
-            printf("Venda: %d | Produto: %s | Qtd: %d | Total: R$%.2f\n",
-                   vendas[i].numero_venda, vendas[i].descricao,
-                   vendas[i].quantidade, vendas[i].total_item);
-            total += vendas[i].total_item;
+    float total_periodo = 0.0f;
+    printf("\n--- VENDAS NO PERIODO %02d/%02d/%04d a %02d/%02d/%04d ---\n", di, mi, ai, df, mf, af);
+    
+    for (int i = 0; i < quantidade_vendas; ++i) {
+        if (data_no_intervalo(vendas[i].dia, vendas[i].mes, vendas[i].ano, di, mi, ai, df, mf, af)) {
+            printf("Venda: %d | %s | Qtd: %d | Total: R$%.2f | Data: %02d/%02d/%d | Status: %c\n",
+                   vendas[i].numero_venda, vendas[i].descricao, vendas[i].quantidade,
+                   vendas[i].total_item, vendas[i].dia, vendas[i].mes, vendas[i].ano,
+                   vendas[i].status_pagamento);
+            total_periodo += vendas[i].total_item;
             encontrou = 1;
         }
     }
     
-    if (!encontrou) printf("Nenhuma venda nesta data.\n");
-    else printf("Total: R$%.2f\n", total);
+    if (!encontrou) {
+        printf("Nenhuma venda no periodo informado.\n");
+    } else {
+        printf("----------------------------------------\n");
+        printf("TOTAL DO PERIODO: R$%.2f\n", total_periodo);
+    }
 }
 
-/* Lista faturamento total */
+/* Lista faturamento consolidado */
 void listar_faturamento() {
-    if (quantidade_vendas == 0) { printf("Nenhuma venda registrada.\n"); return; }
+    if (quantidade_pagamentos == 0) { 
+        printf("Nenhum pagamento registrado.\n"); 
+        return; 
+    }
+
+    float total_dinheiro = 0.0f;
+    float total_cartao = 0.0f;
+    float total_geral = 0.0f;
     
-    float total = 0.0f;
-    for (int i = 0; i < quantidade_vendas; i++) {
-        if (vendas[i].status_pagamento == 'p') {
-            total += vendas[i].total_item;
+    for (int i = 0; i < quantidade_pagamentos; ++i) {
+        total_geral += pagamentos[i].total;
+        if (pagamentos[i].tipo == 'd') {
+            total_dinheiro += pagamentos[i].total;
+        } else if (pagamentos[i].tipo == 'c') {
+            total_cartao += pagamentos[i].total;
         }
     }
-    printf("Total faturado (vendas pagas): R$%.2f\n", total);
+    
+    printf("\n=========================================\n");
+    printf("        FATURAMENTO CONSOLIDADO\n");
+    printf("=========================================\n");
+    printf("Dinheiro:    R$ %.2f\n", total_dinheiro);
+    printf("Cartao:      R$ %.2f\n", total_cartao);
+    printf("-----------------------------------------\n");
+    printf("TOTAL GERAL: R$ %.2f\n", total_geral);
+    printf("=========================================\n\n");
 }
-
-/* =================== FIM DAS IMPLEMENTAÇÕES =================== */
