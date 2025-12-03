@@ -218,14 +218,13 @@ void relatorio_dia();
 float nova_venda();
 void registrarDiaSemana(Venda *venda);
 void mostrarDiaSemana();
-void retirada_caixa();
 void pagamento_aberto();
 int pagamento_cartao(float total, int numero_venda, int is_mixed);
 int pagamento_dinheiro(float total, int numero_venda, int is_mixed, float desconto_percentual);
 void realizarPagamento(Venda *venda);
 void abrir_caixa();
 void fechar_caixa();
-void retirada_caixa(void);  // <- unificado aqui (substitui a versão sem parâmetros)
+void retirada_caixa(void);
 
 /* Menus */
 void menu_principal();
@@ -303,7 +302,8 @@ void carregar_numero_venda_global(void) {
     if (!f) return;
     char linha[64];
     int valor = 0;
-    if (fgets(linha, sizeof(linha), f) && sscanf(linha, "%d", &valor) == 1 && valor > 0)
+    /* Validar limites: 0 < valor < 1e9 para evitar valores absurdos */
+    if (fgets(linha, sizeof(linha), f) && sscanf(linha, "%d", &valor) == 1 && valor > 0 && valor < 1000000000)
         numero_venda_global = valor;
     fclose(f);
 }
@@ -698,6 +698,7 @@ void cadastrar_clientes() {
 }
 
 /* ler_cpf_valido: REQUER que cpf_destino tenha capacidade para pelo menos 15 bytes (11 dígitos + '\0' + margem) */
+/* IMPORTANTE: cpf_destino deve ter pelo menos 15 bytes alocados */
 void ler_cpf_valido(char *cpf_destino, Cliente *clientes_local, int quantidade_clientes_local) {
     char cpf_temp[32];
     int cpf_valido;
@@ -2069,11 +2070,16 @@ void listar_clperiodo() {
     if (quantidade_vendas == 0) { printf("Nenhuma venda registrada.\n"); return; }
 
     int di, mi, ai, df, mf, af;
+    /* Leitura por linha para evitar leftover */
+    char buf_di[64], buf_df[64];
     printf("Data inicial (dia mes ano): ");
-    if (scanf("%d %d %d", &di, &mi, &ai) != 3) { while(getchar()!='\n'); printf("Valores invalidos.\n"); return; }
+    if (!fgets(buf_di, sizeof(buf_di), stdin) || sscanf(buf_di, "%d %d %d", &di, &mi, &ai) != 3) {
+        printf("Valores invalidos.\n"); return;
+    }
     printf("Data final (dia mes ano): ");
-    if (scanf("%d %d %d", &df, &mf, &af) != 3) { while(getchar()!='\n'); printf("Valores invalidos.\n"); return; }
-    while(getchar()!='\n');
+    if (!fgets(buf_df, sizeof(buf_df), stdin) || sscanf(buf_df, "%d %d %d", &df, &mf, &af) != 3) {
+        printf("Valores invalidos.\n"); return;
+    }
 
     int encontrou = 0;
     printf("\n--- CLIENTES NO PERIODO %02d/%02d/%04d a %02d/%02d/%04d ---\n", di, mi, ai, df, mf, af);
@@ -2184,11 +2190,16 @@ void listarv_periodo() {
     if (quantidade_vendas == 0) { printf("Nenhuma venda registrada.\n"); return; }
 
     int di, mi, ai, df, mf, af;
+    /* Leitura por linha para evitar leftover */
+    char buf_di[64], buf_df[64];
     printf("Data inicial (dia mes ano): ");
-    if (scanf("%d %d %d", &di, &mi, &ai) != 3) { while(getchar()!='\n'); printf("Valores invalidos.\n"); return; }
+    if (!fgets(buf_di, sizeof(buf_di), stdin) || sscanf(buf_di, "%d %d %d", &di, &mi, &ai) != 3) {
+        printf("Valores invalidos.\n"); return;
+    }
     printf("Data final (dia mes ano): ");
-    if (scanf("%d %d %d", &df, &mf, &af) != 3) { while(getchar()!='\n'); printf("Valores invalidos.\n"); return; }
-    while(getchar()!='\n');
+    if (!fgets(buf_df, sizeof(buf_df), stdin) || sscanf(buf_df, "%d %d %d", &df, &mf, &af) != 3) {
+        printf("Valores invalidos.\n"); return;
+    }
 
     int encontrou = 0;
     float total_periodo = 0.0f;
