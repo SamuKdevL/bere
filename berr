@@ -1,11 +1,3 @@
-/*
-  mercado.c
-  Versão: correções e ajustes solicitados pelo usuário.
-  Objetivo: manter o padrão original do projeto, corrigir bugs,
-  implementar carregamento/salvamento de vendas e pagamentos,
-  ajustar reallocs, entradas, formatos e documentar funções.
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -247,9 +239,6 @@ void menu_estoque();
 void imprimir_recibo(int numero_venda);
 void menu_fechamento_dia(void);
 void atualizar_status_e_forma_venda(int numero_venda);
-void carregar_numero_venda_global(void);
-void salvar_numero_venda_global(void);
-int data_no_intervalo(int d, int m, int a, int di, int mi, int ai, int df, int mf, int af);
 /* protótipos novos */
 int exige_admin(void);
 int solicitar_confirmacao_admin(void);
@@ -269,7 +258,7 @@ void ajustar_lucro_pos_desconto(int numero_venda, float valor_desconto);
 /* helpers para reduzir duplicacao e tratar realloc/entrada */
 void *xrealloc(void *ptr, size_t nmemb, size_t size) {
     void *p = realloc(ptr, nmemb * size);
-    if (!p) { fprintf(stderr, "Erro: realloc/malloc falhou\n"); exit(1); }
+    if (!p) { fprintf(stderr, "Erro: realloc falhou ao alocar %lu elementos de tamanho %lu\n", (unsigned long)nmemb, (unsigned long)size); exit(1); }
     return p;
 }
 
@@ -312,8 +301,9 @@ int data_no_intervalo(int d, int m, int a, int di, int mi, int ai, int df, int m
 void carregar_numero_venda_global(void) {
     FILE *f = fopen("numero_venda.txt", "r");
     if (!f) return;
+    char linha[64];
     int valor = 0;
-    if (fscanf(f, "%d", &valor) == 1 && valor > 0)
+    if (fgets(linha, sizeof(linha), f) && sscanf(linha, "%d", &valor) == 1 && valor > 0)
         numero_venda_global = valor;
     fclose(f);
 }
@@ -465,7 +455,7 @@ void carregar_vendas() {
         Venda v;
         memset(&v, 0, sizeof(Venda));
         /* note o espaço antes de %c para pular possiveis espaços/brancos */
-        int campos = sscanf(linha, "%d|%d|%39[^|]|%f|%d|%f| %c |%d|%d|%d|%14[^|]|%49[^|]| %c",
+        int campos = sscanf(linha, "%d|%d|%39[^|]|%f|%d|%f| %c|%d|%d|%d|%14[^|]|%49[^|]| %c",
                             &v.numero_venda, &v.codigo_produto, v.descricao, &v.preco_venda,
                             &v.quantidade, &v.total_item, &v.status_pagamento,
                             &v.dia, &v.mes, &v.ano, v.cpf_cliente, v.nome_cliente, &v.forma_pagamento);
@@ -511,7 +501,7 @@ void carregar_pagamentos() {
         Pagamento p;
         memset(&p, 0, sizeof(Pagamento));
         /* espaço antes de %c para ignorar espaços em branco */
-        int campos = sscanf(linha, "%d|%f| %c |%f|%f|%f",
+        int campos = sscanf(linha, "%d|%f| %c|%f|%f|%f",
                            &p.numero_venda, &p.total, &p.tipo, &p.pagamento, &p.troco, &p.desconto_percentual);
         if (campos < 3) continue;
         pagamentos = xrealloc(pagamentos, quantidade_pagamentos + 1, sizeof(Pagamento));
@@ -671,42 +661,51 @@ void cadastrar_clientes() {
     c->codigo = quantidade_clientes + 1;
 
     printf("Nome: ");
-    scanf(" %49[^\n]", c->nome);
-    while (getchar() != '\n');
+    if (fgets(c->nome, sizeof(c->nome), stdin)) {
+        c->nome[strcspn(c->nome, "\n")] = '\0';
+    }
 
     printf("Nome Social: ");
-    scanf(" %49[^\n]", c->nome_social);
-    while (getchar() != '\n');
+    if (fgets(c->nome_social, sizeof(c->nome_social), stdin)) {
+        c->nome_social[strcspn(c->nome_social, "\n")] = '\0';
+    }
 
     ler_cpf_valido(c->cpf, clientes, quantidade_clientes);
 
     printf("Rua: ");
-    scanf(" %29[^\n]", c->rua);
-    while (getchar() != '\n');
+    if (fgets(c->rua, sizeof(c->rua), stdin)) {
+        c->rua[strcspn(c->rua, "\n")] = '\0';
+    }
 
     c->numero = ler_inteiro_valido("Numero: ");
 
     printf("Bairro: ");
-    scanf(" %29[^\n]", c->bairro);
-    while (getchar() != '\n');
+    if (fgets(c->bairro, sizeof(c->bairro), stdin)) {
+        c->bairro[strcspn(c->bairro, "\n")] = '\0';
+    }
 
     printf("Celular: ");
-    scanf(" %19[^\n]", c->celular);
-    while (getchar() != '\n');
+    if (fgets(c->celular, sizeof(c->celular), stdin)) {
+        c->celular[strcspn(c->celular, "\n")] = '\0';
+    }
 
     quantidade_clientes++;
     salvar_clientes();
     printf("Cliente cadastrado!\n");
 }
 
+/* ler_cpf_valido: REQUER que cpf_destino tenha capacidade para pelo menos 15 bytes (11 dígitos + '\0' + margem) */
 void ler_cpf_valido(char *cpf_destino, Cliente *clientes_local, int quantidade_clientes_local) {
     char cpf_temp[32];
     int cpf_valido;
     do {
         cpf_valido = 1;
         printf("CPF (11 numeros, apenas digitos): ");
-        if (scanf(" %31[^\n]", cpf_temp) != 1) { cpf_temp[0] = '\0'; }
-        while (getchar() != '\n');
+        if (fgets(cpf_temp, sizeof(cpf_temp), stdin)) {
+            cpf_temp[strcspn(cpf_temp, "\n")] = '\0';
+        } else {
+            cpf_temp[0] = '\0';
+        }
 
         if (strlen(cpf_temp) != 11) { printf("Erro: CPF deve ter 11 numeros!\n"); cpf_valido = 0; continue; }
 
@@ -773,8 +772,9 @@ void cadastrar_produtos() {
     p->codigo_produto = quantidade_produtos + 1;
 
     printf("Descricao: ");
-    scanf(" %39[^\n]", p->descricao);
-    while (getchar() != '\n');
+    if (fgets(p->descricao, sizeof(p->descricao), stdin)) {
+        p->descricao[strcspn(p->descricao, "\n")] = '\0';
+    }
 
     ler_float_positivo("Preco de compra: ", &p->preco_compra);
     ler_float_positivo("Margem de lucro (porcento): ", &p->margem_lucro);
@@ -875,8 +875,10 @@ void registrar_venda_diaria(const char *setor_nome, const char *descricao, int q
     vendas_diarias[quantidade_vendas_diarias++] = vd;
     salvar_vendas_diarias();
     
-    /* NOVO: acumula lucro no acumulador do dia */
-    acumular_lucro_setor(setor_nome, total / quantidade, (total - lucro) / quantidade, quantidade);
+    /* NOVO: acumula lucro no acumulador do dia (protege contra divisão por zero) */
+    if (quantidade > 0) {
+        acumular_lucro_setor(setor_nome, total / quantidade, (total - lucro) / quantidade, quantidade);
+    }
 }
 
 /* ======================= Pagamentos ======================= */
