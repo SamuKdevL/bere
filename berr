@@ -1,3 +1,11 @@
+/*
+  mercado.c
+  Versão: correções e ajustes solicitados pelo usuário.
+  Objetivo: manter o padrão original do projeto, corrigir bugs,
+  implementar carregamento/salvamento de vendas e pagamentos,
+  ajustar reallocs, entradas, formatos e documentar funções.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -330,12 +338,11 @@ void carregar_usuarios(){
     char linha[256];
     while (fgets(linha, sizeof(linha), arquivo)) {
         Usuario u;
+        memset(&u, 0, sizeof(Usuario));
         int campos = sscanf(linha, "%d|%12[^|]|%8[^|]|%d", &u.codigo_usuario, u.login, u.senha, &u.tipo);
         if (campos != 4) continue;
 
-        Usuario *tmp = realloc(usuarios, (quantidade_usuarios + 1) * sizeof(Usuario));
-        if (!tmp) { fclose(arquivo); printf("Erro de alocacao usuarios\n"); exit(1); }
-        usuarios = tmp;
+        usuarios = xrealloc(usuarios, quantidade_usuarios + 1, sizeof(Usuario));
         usuarios[quantidade_usuarios++] = u;
     }
     fclose(arquivo);
@@ -363,12 +370,11 @@ void carregar_clientes() {
     char linha[512];
     while (fgets(linha, sizeof(linha), arquivo)) {
         Cliente c;
+        memset(&c, 0, sizeof(Cliente));
         int campos = sscanf(linha, "%d|%49[^|]|%49[^|]|%14[^|]|%29[^|]|%d|%29[^|]|%19[^\n]",
                             &c.codigo, c.nome, c.nome_social, c.cpf, c.rua, &c.numero, c.bairro, c.celular);
         if (campos != 8) continue;
-        Cliente *tmp = realloc(clientes, (quantidade_clientes + 1) * sizeof(Cliente));
-        if (!tmp) { fclose(arquivo); printf("Erro de alocacao clientes\n"); exit(1); }
-        clientes = tmp;
+        clientes = xrealloc(clientes, quantidade_clientes + 1, sizeof(Cliente));
         clientes[quantidade_clientes++] = c;
     }
     fclose(arquivo);
@@ -393,27 +399,28 @@ void carregar_produtos() {
     char linha[512];
     while (fgets(linha, sizeof(linha), arquivo)) {
         Produto p;
+        memset(&p, 0, sizeof(Produto));
         int campos = sscanf(linha, "%d|%39[^|]|%f|%f|%19[^|]|%d|%d",
                             &p.codigo_produto, p.descricao, &p.preco_compra, &p.margem_lucro,
                             p.categoria, &p.estoque_minimo, &p.estoque);
         if (campos != 7) continue;
         p.preco_venda = p.preco_compra * (1.0f + p.margem_lucro / 100.0f);
 
-        Produto *tmp = realloc(produtos, (quantidade_produtos + 1) * sizeof(Produto));
-        if (!tmp) { fclose(arquivo); printf("Erro de alocacao produtos\n"); exit(1); }
-        produtos = tmp;
+        produtos = xrealloc(produtos, quantidade_produtos + 1, sizeof(Produto));
         produtos[quantidade_produtos++] = p;
     }
     fclose(arquivo);
 }
 
-/* binary file with full product records (estoque.dat) */
+/* binary file with full product records (estoque.dat)
+ * AVISO: Este arquivo depende do layout exato da struct Produto.
+ * Mudanças na struct invalidarão o arquivo. */
 void carregar_estoque_dat() {
     FILE *f = fopen("estoque.dat", "rb");
     if (!f) return; // sem arquivo, ok
     int cnt = 0;
     if (fread(&cnt, sizeof(int), 1, f) != 1) { fclose(f); return; }
-    if (cnt <= 0) { fclose(f); return; }
+    if (cnt <= 0 || cnt > 1000000) { fclose(f); return; } // validação de sanidade
     Produto *tmp = malloc(cnt * sizeof(Produto));
     if (!tmp) { fclose(f); printf("Erro de alocacao (carregar_estoque_dat)\n"); exit(1); }
     if (fread(tmp, sizeof(Produto), cnt, f) != (size_t)cnt) { free(tmp); fclose(f); return; }
@@ -456,6 +463,7 @@ void carregar_vendas() {
     char linha[1024];
     while (fgets(linha, sizeof(linha), arquivo)) {
         Venda v;
+        memset(&v, 0, sizeof(Venda));
         /* note o espaço antes de %c para pular possiveis espaços/brancos */
         int campos = sscanf(linha, "%d|%d|%39[^|]|%f|%d|%f| %c |%d|%d|%d|%14[^|]|%49[^|]| %c",
                             &v.numero_venda, &v.codigo_produto, v.descricao, &v.preco_venda,
@@ -463,9 +471,7 @@ void carregar_vendas() {
                             &v.dia, &v.mes, &v.ano, v.cpf_cliente, v.nome_cliente, &v.forma_pagamento);
         if (campos < 7) continue;
         if (campos < 11) { v.dia = v.mes = v.ano = 0; v.cpf_cliente[0] = '\0'; v.nome_cliente[0] = '\0'; v.forma_pagamento = 'O'; }
-        Venda *tmp = realloc(vendas, (quantidade_vendas +  1) * sizeof(Venda));
-        if (!tmp) { fclose(arquivo); printf("Erro de alocacao vendas\n"); exit(1); }
-        vendas = tmp;
+        vendas = xrealloc(vendas, quantidade_vendas + 1, sizeof(Venda));
         vendas[quantidade_vendas++] = v;
         if (v.numero_venda >= numero_venda_global) numero_venda_global = v.numero_venda + 1;
     }
@@ -503,25 +509,26 @@ void carregar_pagamentos() {
     char linha[256];
     while (fgets(linha, sizeof(linha), arquivo)) {
         Pagamento p;
+        memset(&p, 0, sizeof(Pagamento));
         /* espaço antes de %c para ignorar espaços em branco */
         int campos = sscanf(linha, "%d|%f| %c |%f|%f|%f",
                            &p.numero_venda, &p.total, &p.tipo, &p.pagamento, &p.troco, &p.desconto_percentual);
         if (campos < 3) continue;
-        Pagamento *tmp = realloc(pagamentos, (quantidade_pagamentos + 1) * sizeof(Pagamento));
-        if (!tmp) { fclose(arquivo); printf("Erro de alocacao pagamentos\n"); exit(1); }
-        pagamentos = tmp;
+        pagamentos = xrealloc(pagamentos, quantidade_pagamentos + 1, sizeof(Pagamento));
         pagamentos[quantidade_pagamentos++] = p;
     }
     fclose(arquivo);
 }
 
-/* vendas_diarias: binary file with VendaDiaria records */
+/* vendas_diarias: binary file with VendaDiaria records
+ * AVISO: Este arquivo depende do layout exato da struct VendaDiaria.
+ * Mudanças na struct invalidarão o arquivo. */
 void carregar_vendas_diarias() {
     FILE *f = fopen("vendas_diarias.dat", "rb");
     if (!f) return;
     int cnt = 0;
     if (fread(&cnt, sizeof(int), 1, f) != 1) { fclose(f); return; }
-    if (cnt <= 0) { fclose(f); return; }
+    if (cnt <= 0 || cnt > 1000000) { fclose(f); return; } // validação de sanidade
     VendaDiaria *tmp = malloc(cnt * sizeof(VendaDiaria));
     if (!tmp) { fclose(f); printf("Erro alocacao vendas_diarias\n"); exit(1); }
     if (fread(tmp, sizeof(VendaDiaria), cnt, f) != (size_t)cnt) { free(tmp); fclose(f); return; }
@@ -642,9 +649,7 @@ void cadastrar_usuario() {
         if (tipo_temp != 1 && tipo_temp != 2) { printf("ERRO: tipo invalido.\n"); }
     } while (tipo_temp != 1 && tipo_temp != 2);
 
-    Usuario *tmp = realloc(usuarios, (quantidade_usuarios + 1) * sizeof(Usuario));
-    if (!tmp) { printf("Erro de alocacao!\n"); exit(1); }
-    usuarios = tmp;
+    usuarios = xrealloc(usuarios, quantidade_usuarios + 1, sizeof(Usuario));
 
     usuarios[quantidade_usuarios].codigo_usuario = quantidade_usuarios + 1;
     strncpy(usuarios[quantidade_usuarios].login, login_temp, sizeof(usuarios[quantidade_usuarios].login)-1);
@@ -659,11 +664,10 @@ void cadastrar_usuario() {
 }
 
 void cadastrar_clientes() {
-    Cliente *tmp = realloc(clientes, (quantidade_clientes + 1) * sizeof(Cliente));
-    if (!tmp) { printf("Erro de alocacao clientes\n"); exit(1); }
-    clientes = tmp;
+    clientes = xrealloc(clientes, quantidade_clientes + 1, sizeof(Cliente));
 
     Cliente *c = &clientes[quantidade_clientes];
+    memset(c, 0, sizeof(Cliente));
     c->codigo = quantidade_clientes + 1;
 
     printf("Nome: ");
@@ -717,8 +721,7 @@ void ler_cpf_valido(char *cpf_destino, Cliente *clientes_local, int quantidade_c
     } while (!cpf_valido);
 
     /* copiar com segurança para o destino (tamanho declarado 15) */
-    strncpy(cpf_destino, cpf_temp, 15);
-    cpf_destino[14] = '\0';
+    snprintf(cpf_destino, 15, "%s", cpf_temp);
 }
 
 int ler_inteiro_valido(const char *mensagem) {
@@ -764,9 +767,7 @@ void ler_float_positivo(const char *mensagem, float *valor) {
 void cadastrar_produtos() {
      if (!solicitar_confirmacao_admin()) return;
      
-    Produto *tmp = realloc(produtos, (quantidade_produtos + 1) * sizeof(Produto));
-    if (!tmp) { printf("Erro de alocacao produtos\n"); exit(1); }
-    produtos = tmp;
+    produtos = xrealloc(produtos, quantidade_produtos + 1, sizeof(Produto));
 
     Produto *p = &produtos[quantidade_produtos];
     p->codigo_produto = quantidade_produtos + 1;
@@ -870,9 +871,7 @@ void registrar_venda_diaria(const char *setor_nome, const char *descricao, int q
     vd.minuto = lt->tm_min;
     vd.segundo = lt->tm_sec;
     
-    VendaDiaria *tmp = realloc(vendas_diarias, (quantidade_vendas_diarias + 1) * sizeof(VendaDiaria));
-    if (!tmp) { printf("Erro alocacao vendas_diarias\n"); return; }
-    vendas_diarias = tmp;
+    vendas_diarias = xrealloc(vendas_diarias, quantidade_vendas_diarias + 1, sizeof(VendaDiaria));
     vendas_diarias[quantidade_vendas_diarias++] = vd;
     salvar_vendas_diarias();
     
@@ -911,9 +910,7 @@ int pagamento_cartao(float total, int numero_venda, int is_mixed) {
     p.desconto_percentual = 0.0f;
     p.tipo = 'c';
     
-    Pagamento *tmp = realloc(pagamentos, (quantidade_pagamentos + 1) * sizeof(Pagamento));
-    if (!tmp) { printf("Erro alocacao pagamento cartao\n"); return 0; }
-    pagamentos = tmp;
+    pagamentos = xrealloc(pagamentos, quantidade_pagamentos + 1, sizeof(Pagamento));
     pagamentos[quantidade_pagamentos++] = p;
     
     fechamento.valor_cartao += total;
@@ -953,9 +950,7 @@ int pagamento_dinheiro(float total, int numero_venda, int is_mixed, float descon
     p.desconto_percentual = desconto_percentual;
     p.tipo = 'd';
     
-    Pagamento *tmp = realloc(pagamentos, (quantidade_pagamentos + 1) * sizeof(Pagamento));
-    if (!tmp) { printf("Erro alocacao pagamento dinheiro\n"); return 0; }
-    pagamentos = tmp;
+    pagamentos = xrealloc(pagamentos, quantidade_pagamentos + 1, sizeof(Pagamento));
     pagamentos[quantidade_pagamentos++] = p;
     
     fechamento.valor_dinheiro += total;
@@ -1045,9 +1040,7 @@ void pagamento_aberto(void) {
         for (int j = 0; j < list_count; j++)
             if (list[j] == num) { seen = 1; break; }
         if (!seen) {
-            int *tmp = realloc(list, (list_count + 1) * sizeof(int));
-            if (!tmp) { printf("Erro alocacao\n"); free(list); return; }
-            list = tmp;
+            list = xrealloc(list, list_count + 1, sizeof(int));
             list[list_count++] = num;
         }
     }
@@ -1418,9 +1411,7 @@ void criar_estoque_inicial() {
         p.estoque_minimo = produtos_iniciais[i].estoque_minimo;
         p.margem_lucro = produtos_iniciais[i].margem_lucro;
         
-        Produto *tmp = realloc(produtos, (quantidade_produtos + 1) * sizeof(Produto));
-        if (!tmp) { printf("Erro de alocacao estoque inicial\n"); exit(1); }
-        produtos = tmp;
+        produtos = xrealloc(produtos, quantidade_produtos + 1, sizeof(Produto));
         produtos[quantidade_produtos++] = p;
     }
     salvar_produtos();
@@ -1509,7 +1500,7 @@ int main(void) {
         admin.tipo = 1;
         
         usuarios = malloc(sizeof(Usuario));
-        if (!usuarios) { printf("Erro critico de memoria!\n"); return 1; }
+        if (!usuarios) { fprintf(stderr, "Erro critico de memoria ao criar usuario admin!\n"); return 1; }
         usuarios[0] = admin;
         quantidade_usuarios = 1;
         salvar_usuarios();
@@ -1724,9 +1715,7 @@ float nova_venda() {
 
                     float total_item = qtd * produtos[idx].preco_venda;
 
-                    ItemCarrinho *tmpc = realloc(carrinho, (n_itens + 1) * sizeof(ItemCarrinho));
-                    if (!tmpc) { printf("Erro alocacao carrinho.\n"); free(carrinho); return 0.0f; }
-                    carrinho = tmpc;
+                    carrinho = xrealloc(carrinho, n_itens + 1, sizeof(ItemCarrinho));
                     carrinho[n_itens].codigo_produto = produtos[idx].codigo_produto;
                     strncpy(carrinho[n_itens].descricao, produtos[idx].descricao, sizeof(carrinho[n_itens].descricao)-1);
                     carrinho[n_itens].descricao[sizeof(carrinho[n_itens].descricao)-1] = '\0';
@@ -1751,9 +1740,7 @@ float nova_venda() {
                     strncpy(v.nome_cliente, nome_cli, sizeof(v.nome_cliente)-1);
                     registrarDiaSemana(&v);
                     
-                    Venda *tmpv = realloc(vendas, (quantidade_vendas + 1) * sizeof(Venda));
-                    if (!tmpv) { printf("Erro alocacao vendas.\n"); free(carrinho); return 0.0f; }
-                    vendas = tmpv;
+                    vendas = xrealloc(vendas, quantidade_vendas + 1, sizeof(Venda));
                     vendas[quantidade_vendas++] = v;
 
                     produtos[idx].estoque -= qtd;
