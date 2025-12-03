@@ -575,13 +575,13 @@ void menu_usuarios() {
         printf("0) Voltar\n");
         printf("Escolha: ");
         
-        if (scanf("%d", &op) != 1) { 
-            while(getchar()!='\n'); 
-            op = -1; 
+        /* Leitura por linha para evitar leftover no buffer */
+        char buf_menu[64];
+        if (!fgets(buf_menu, sizeof(buf_menu), stdin) || sscanf(buf_menu, "%d", &op) != 1) {
+            op = -1;
             printf("Opcao invalida!\n");
-            continue; 
+            continue;
         }
-        while(getchar()!='\n');
         
         if (op == 1) {
             listar_usuarios();
@@ -634,8 +634,11 @@ void cadastrar_usuario() {
 
     do {
         printf("Tipo do usuario (1 = admin, 2 = comum): ");
-        if (scanf("%d", &tipo_temp) != 1) { while (getchar() != '\n'); tipo_temp = 0; }
-        while (getchar() != '\n');
+        /* Leitura por linha para evitar leftover */
+        char buf_tipo[64];
+        if (!fgets(buf_tipo, sizeof(buf_tipo), stdin) || sscanf(buf_tipo, "%d", &tipo_temp) != 1) {
+            tipo_temp = 0;
+        }
         if (tipo_temp != 1 && tipo_temp != 2) { printf("ERRO: tipo invalido.\n"); }
     } while (tipo_temp != 1 && tipo_temp != 2);
 
@@ -784,8 +787,11 @@ void cadastrar_produtos() {
     int escolha = 0;
     do {
         printf("Categoria (1-Alimentos, 2-Limpeza, 3-Padaria): ");
-        if (scanf("%d", &escolha) != 1) { while(getchar()!='\n'); escolha = 0; }
-        while(getchar()!='\n');
+        /* Leitura por linha para evitar leftover */
+        char buf_cat[64];
+        if (!fgets(buf_cat, sizeof(buf_cat), stdin) || sscanf(buf_cat, "%d", &escolha) != 1) {
+            escolha = 0;
+        }
         if (escolha < 1 || escolha > 3) printf("Escolha invalida. Use 1,2 ou 3.\n");
     } while (escolha < 1 || escolha > 3);
     if (escolha == 1) strcpy(p->categoria, "Alimentos");
@@ -844,12 +850,12 @@ void relatorioVendasPorDia(int dia_semana) {
 void relatorio_dia() {
     printf("Dia da semana (0=Dom...6=Sab): ");
     int d;
-    if (scanf("%d", &d) != 1 || d < 0 || d > 6) {
+    /* Leitura por linha para evitar leftover */
+    char buf[64];
+    if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%d", &d) != 1 || d < 0 || d > 6) {
         printf("Dia invalido!\n");
-        while(getchar()!='\n');
         return;
     }
-    while(getchar()!='\n');
     relatorioVendasPorDia(d);
 }
 
@@ -932,8 +938,12 @@ int pagamento_dinheiro(float total, int numero_venda, int is_mixed, float descon
 
     printf("Valor total a pagar: R$%.2f\n", total);
     printf("Informe quanto foi pago em dinheiro: ");
-    if (scanf("%f", &pago) != 1) { while(getchar()!='\n'); printf("Entrada invalida.\n"); return 0; }
-    while(getchar()!='\n');
+    /* Leitura por linha para evitar leftover */
+    char buf_pago[64];
+    if (!fgets(buf_pago, sizeof(buf_pago), stdin) || sscanf(buf_pago, "%f", &pago) != 1) {
+        printf("Entrada invalida.\n");
+        return 0;
+    }
 
     if (pago <= 0.0f) { printf("Valor pago invalido.\n"); return 0; }
 
@@ -983,6 +993,7 @@ void atualizar_status_e_forma_venda(int numero_venda) {
             else if (pagamentos[i].tipo == 'c') has_c = 1;
         }
     
+    /* Tolerância de R$0.01 para arredondamento de floats */
     int quitada = (fabs(soma_pag - soma_itens) <= 0.01f);
     char forma = 'O';
     if (has_d && has_c) forma = 'B';
@@ -1060,8 +1071,13 @@ void pagamento_aberto(void) {
     
     int escolha;
     printf("Numero da venda para pagar (0=cancelar): ");
-    if (scanf("%d", &escolha) != 1) { while(getchar()!='\n'); printf("Invalido.\n"); free(list); return; }
-    while(getchar()!='\n');
+    /* Leitura por linha para evitar leftover */
+    char buf_esc[64];
+    if (!fgets(buf_esc, sizeof(buf_esc), stdin) || sscanf(buf_esc, "%d", &escolha) != 1) {
+        printf("Invalido.\n");
+        free(list);
+        return;
+    }
     if (escolha == 0) { free(list); return; }
     
     int valida = 0;
@@ -1077,8 +1093,13 @@ void pagamento_aberto(void) {
     
     printf("Venda %d - Total: R$%.2f\nForma: 1-Cartao 2-Dinheiro 0-Cancelar: ", escolha, totalVenda);
     int op;
-    if (scanf("%d", &op) != 1) { while(getchar()!='\n'); printf("Invalido.\n"); free(list); return; }
-    while(getchar()!='\n');
+    /* Leitura por linha para evitar leftover */
+    char buf_op[64];
+    if (!fgets(buf_op, sizeof(buf_op), stdin) || sscanf(buf_op, "%d", &op) != 1) {
+        printf("Invalido.\n");
+        free(list);
+        return;
+    }
     
     int ok = 0;
     if (op == 1) ok = pagamento_cartao(totalVenda, escolha, 0);
@@ -1149,8 +1170,12 @@ void menu_cadastros() {
     int op = 0;
     do {
         printf("\n--- CADASTROS ---\n1) Usuarios\n2) Cliente\n3) Produto\n0) Voltar\nEscolha: ");
-        if (scanf("%d", &op) != 1) { while(getchar()!='\n'); op = -1; continue; }
-        while(getchar()!='\n');
+        /* Leitura por linha para evitar leftover */
+        char buf[64];
+        if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%d", &op) != 1) {
+            op = -1;
+            continue;
+        }
         if (op == 1) menu_usuarios();
         else if (op == 2) cadastrar_clientes();
         else if (op == 3) cadastrar_produtos();
@@ -1161,8 +1186,12 @@ void menu_vendas_menu() {
     int op = 0;
     do {
         printf("\n--- VENDAS ---\n1) Nova venda\n2) Pagar venda em aberto\n3) Listar vendas\n0) Voltar\nEscolha: ");
-        if (scanf("%d", &op) != 1) { while(getchar()!='\n'); op = -1; continue; }
-        while(getchar()!='\n');
+        /* Leitura por linha para evitar leftover */
+        char buf[64];
+        if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%d", &op) != 1) {
+            op = -1;
+            continue;
+        }
         if (op == 1) nova_venda();
         else if (op == 2) pagamento_aberto();
         else if (op == 3) listar_vendas();
@@ -1177,8 +1206,12 @@ void menu_fechamento_caixa() {
     int op = 0;
     do {
         printf("\n--- FECHAMENTO/MOVIMENTACOES ---\n1) Fechar caixa\n2) Retirada (sangria)\n3) Fechamento dia\n4) Lucro atual\n0) Voltar\nEscolha: ");
-        if (scanf("%d", &op) != 1) { while(getchar()!='\n'); op = -1; continue; }
-        while(getchar()!='\n');
+        /* Leitura por linha para evitar leftover */
+        char buf[64];
+        if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%d", &op) != 1) {
+            op = -1;
+            continue;
+        }
         if (op == 1) fechar_caixa();
         else if (op == 2) retirada_caixa();
         else if (op == 3) menu_fechamento_dia();
@@ -1199,8 +1232,12 @@ void menu_relatorios() {
         printf("7) Faturamento\n");
         printf("8) Vendas por dia da semana\n");
         printf("0) Voltar\nEscolha: ");
-        if (scanf("%d", &op) != 1) { while(getchar()!='\n'); op = -1; continue; }
-        while(getchar()!='\n');
+        /* Leitura por linha para evitar leftover */
+        char buf[64];
+        if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%d", &op) != 1) {
+            op = -1;
+            continue;
+        }
         if (op == 1) listarcl_alfabetica();
         else if (op == 2) listar_clperiodo();
         else if (op == 3) listarpr_alfabetica();
@@ -1220,17 +1257,30 @@ void sair() {
     salvar_vendas();
     salvar_pagamentos();
     salvar_vendas_diarias();
+    salvar_vendas_diarias();
     salvar_estoque_dat();
     salvar_numero_venda_global();
+    
+    /* Libera memória alocada */
+    if (usuarios) { free(usuarios); usuarios = NULL; }
+    if (clientes) { free(clientes); clientes = NULL; }
+    if (produtos) { free(produtos); produtos = NULL; }
+    if (vendas) { free(vendas); vendas = NULL; }
+    if (pagamentos) { free(pagamentos); pagamentos = NULL; }
+    if (vendas_diarias) { free(vendas_diarias); vendas_diarias = NULL; }
+    
     exit(0);
 }
-
 void menu_principal() {
     int op = 0;
     do {
         printf("\n=== MENU PRINCIPAL ===\n1) Cadastros\n2) Vendas\n3) Abertura caixa\n4) Fechamento caixa\n5) Relatorios\n6) Estoque\n0) Sair\nEscolha: ");
-        if (scanf("%d", &op) != 1) { while(getchar()!='\n'); op = -1; continue; }
-        while(getchar()!='\n');
+        /* Leitura por linha para evitar leftover */
+        char buf[64];
+        if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%d", &op) != 1) {
+            op = -1;
+            continue;
+        }
         if (op == 1) menu_cadastros();
         else if (op == 2) menu_vendas_menu();
         else if (op == 3) menu_abertura_caixa();
@@ -1247,8 +1297,12 @@ void abrir_caixa() {
     if (!exige_admin()) return;
     
     printf("Valor inicial do caixa: ");
-    if (scanf("%f", &abertura_caixa) != 1) { while(getchar()!='\n'); printf("Invalido.\n"); return; }
-    while(getchar()!='\n');
+    /* Leitura por linha para evitar leftover */
+    char buf[64];
+    if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%f", &abertura_caixa) != 1) {
+        printf("Invalido.\n");
+        return;
+    }
     caixa = abertura_caixa;
     fechamento.abertura = abertura_caixa;
     printf("Caixa aberto com R$%.2f\n", caixa);
@@ -1289,8 +1343,12 @@ void retirada_caixa(void) {
     
     float valor;
     printf("Valor da retirada (sangria): ");
-    if (scanf("%f", &valor) != 1) { while(getchar()!='\n'); printf("Invalido.\n"); return; }
-    while(getchar()!='\n');
+    /* Leitura por linha para evitar leftover */
+    char buf[64];
+    if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%f", &valor) != 1) {
+        printf("Invalido.\n");
+        return;
+    }
     if (valor <= 0 || valor > caixa) { printf("Valor invalido.\n"); return; }
     caixa -= valor;
     printf("Retirada de R$%.2f. Caixa: R$%.2f\n", valor, caixa);
@@ -1339,8 +1397,12 @@ void menu_estoque() {
         printf("0) Voltar\n");
         printf("Escolha: ");
         
-        if (scanf("%d", &op) != 1) { while(getchar()!='\n'); op = -1; continue; }
-        while(getchar()!='\n');
+        /* Leitura por linha para evitar leftover */
+        char buf[64];
+        if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%d", &op) != 1) {
+            op = -1;
+            continue;
+        }
         
         if (op == 1) {
             listar_produtos();
@@ -1349,8 +1411,11 @@ void menu_estoque() {
         } else if (op == 3) {
             printf("\n1) Alimentos\n2) Limpeza\n3) Padaria\nEscolha: ");
             int cat;
-            if (scanf("%d", &cat) != 1) { while(getchar()!='\n'); continue; }
-            while(getchar()!='\n');
+            /* Leitura por linha para evitar leftover */
+            char buf_cat[64];
+            if (!fgets(buf_cat, sizeof(buf_cat), stdin) || sscanf(buf_cat, "%d", &cat) != 1) {
+                continue;
+            }
             
             const char *categoria = NULL;
             if (cat == 1) categoria = "Alimentos";
@@ -1462,11 +1527,9 @@ int fazer_login(void) {
         printf("Tentativas restantes: %d\n", 3 - tentativas);
     }
     
-    printf("\nNumero maximo de tentativas excedido.\n");
+    printf("\nNumero maximo de tentativas excedido!\n");
     return 0;
 }
-
-/* =================== FIM LOGIN =================== */
 
 /* ======================= MAIN ======================= */
 
@@ -1652,15 +1715,21 @@ float nova_venda() {
         printf("\n--- CARRINHO VENDA %d ---\nItens: %d | Subtotal: R$%.2f\n", sale_num, n_itens, subtotal);
         printf("1) Adicionar produto (por setor)\n2) Ir para pagamento\n0) Concluir sem pagar\nEscolha: ");
         int op;
-        if (scanf("%d", &op) != 1) { while(getchar()!='\n'); continue; }
-        while(getchar()!='\n');
+        /* Leitura por linha para evitar leftover */
+        char buf_op[64];
+        if (!fgets(buf_op, sizeof(buf_op), stdin) || sscanf(buf_op, "%d", &op) != 1) {
+            continue;
+        }
 
         if (op == 1) {
             for (;;) {
                 printf("\n--- SETORES ---\n1) Alimentos\n2) Limpeza\n3) Padaria\n0) Voltar\nEscolha: ");
                 int s;
-                if (scanf("%d", &s) != 1) { while(getchar()!='\n'); continue; }
-                while(getchar()!='\n');
+                /* Leitura por linha para evitar leftover */
+                char buf_s[64];
+                if (!fgets(buf_s, sizeof(buf_s), stdin) || sscanf(buf_s, "%d", &s) != 1) {
+                    continue;
+                }
                 if (s == 0) break;
 
                 const char *setor_sel = NULL;
@@ -1673,8 +1742,11 @@ float nova_venda() {
                     listar_produtos_por_setor(setor_sel);
                     printf("Codigo do produto (0=voltar): ");
                     int codigo;
-                    if (scanf("%d", &codigo) != 1) { while(getchar()!='\n'); continue; }
-                    while(getchar()!='\n');
+                    /* Leitura por linha para evitar leftover */
+                    char buf_cod[64];
+                    if (!fgets(buf_cod, sizeof(buf_cod), stdin) || sscanf(buf_cod, "%d", &codigo) != 1) {
+                        continue;
+                    }
                     if (codigo == 0) break;
 
                     int idx = -1;
@@ -1700,8 +1772,11 @@ float nova_venda() {
                         printf("Voce deseja vender %d unidades, mas so existem %d em estoque!\n", qtd, produtos[idx].estoque);
                         printf("Continuar com a venda assim mesmo? (s/n): ");
                         char resp_estoque;
-                        if (scanf(" %c", &resp_estoque) != 1) { while(getchar()!='\n'); continue; }
-                        while(getchar()!='\n');
+                        /* Leitura por linha para evitar leftover */
+                        char buf_resp[64];
+                        if (!fgets(buf_resp, sizeof(buf_resp), stdin) || sscanf(buf_resp, " %c", &resp_estoque) != 1) {
+                            continue;
+                        }
                         if (resp_estoque != 's' && resp_estoque != 'S') {
                             printf("Venda cancelada.\n");
                             continue;
@@ -1755,8 +1830,11 @@ float nova_venda() {
 
                     printf("Adicionar mais itens do setor %s? (s/n): ", setor_sel);
                     char resp;
-                    if (scanf(" %c", &resp) != 1) { while(getchar()!='\n'); resp = 'n'; }
-                    while(getchar()!='\n');
+                    /* Leitura por linha para evitar leftover */
+                    char buf_resp2[64];
+                    if (!fgets(buf_resp2, sizeof(buf_resp2), stdin) || sscanf(buf_resp2, " %c", &resp) != 1) {
+                        resp = 'n';
+                    }
                     if (resp != 's' && resp != 'S') break;
                 }
             }
@@ -1771,8 +1849,11 @@ float nova_venda() {
             printf("\n=== TOTAL DO CARRINHO: R$%.2f ===\n", total_venda);
             printf("Aplicar desconto? Digite o percentual (0 para nenhum desconto): ");
             float desconto_percentual = 0.0f;
-            if (scanf("%f", &desconto_percentual) != 1) { while(getchar()!='\n'); desconto_percentual = 0.0f; }
-            while(getchar()!='\n');
+            /* Leitura por linha para evitar leftover */
+            char buf_desc[64];
+            if (!fgets(buf_desc, sizeof(buf_desc), stdin) || sscanf(buf_desc, "%f", &desconto_percentual) != 1) {
+                desconto_percentual = 0.0f;
+            }
             
             if (desconto_percentual < 0.0f) desconto_percentual = 0.0f;
             if (desconto_percentual > 100.0f) desconto_percentual = 100.0f;
@@ -1801,8 +1882,11 @@ float nova_venda() {
                 printf("\n=== PAGAMENTO VENDA %d === Total: R$%.2f\n", sale_num, total_venda);
                 printf("1) Dinheiro\n2) Cartao\n3) Misto (Dinheiro + Cartao)\n4) Voltar\nEscolha: ");
                 int pg;
-                if (scanf("%d", &pg) != 1) { while(getchar()!='\n'); continue; }
-                while(getchar()!='\n');
+                /* Leitura por linha para evitar leftover */
+                char buf_pg[64];
+                if (!fgets(buf_pg, sizeof(buf_pg), stdin) || sscanf(buf_pg, "%d", &pg) != 1) {
+                    continue;
+                }
                 
                 int ok = 0;
                 if (pg == 1) {
@@ -1811,8 +1895,11 @@ float nova_venda() {
                     printf("\nProcessando pagamento em cartao...\n");
                     printf("(1) Pagamento aprovado\n(0) Pagamento negado\nStatus: ");
                     int aprovado;
-                    if (scanf("%d", &aprovado) != 1) { while(getchar()!='\n'); aprovado = 0; }
-                    while(getchar()!='\n');
+                    /* Leitura por linha para evitar leftover */
+                    char buf_aprov[64];
+                    if (!fgets(buf_aprov, sizeof(buf_aprov), stdin) || sscanf(buf_aprov, "%d", &aprovado) != 1) {
+                        aprovado = 0;
+                    }
                     
                     if (aprovado == 1) {
                         ok = pagamento_cartao(total_venda, sale_num, 0);
@@ -1825,8 +1912,11 @@ float nova_venda() {
                     printf("\nPagamento MISTO - Total: R$%.2f\n", total_venda);
                     printf("Quanto sera pago em DINHEIRO? R$ ");
                     float parte_dinheiro;
-                    if (scanf("%f", &parte_dinheiro) != 1) { while(getchar()!='\n'); continue; }
-                    while(getchar()!='\n');
+                    /* Leitura por linha para evitar leftover */
+                    char buf_din[64];
+                    if (!fgets(buf_din, sizeof(buf_din), stdin) || sscanf(buf_din, "%f", &parte_dinheiro) != 1) {
+                        continue;
+                    }
                     
                     if (parte_dinheiro <= 0.0f || parte_dinheiro >= total_venda) {
                         printf("Valor invalido. Deve ser entre R$0.01 e R$%.2f\n", total_venda - 0.01f);
@@ -1837,8 +1927,11 @@ float nova_venda() {
                     printf("Restante em CARTAO: R$%.2f\n", parte_cartao);
                     printf("Confirmar? (s/n): ");
                     char conf;
-                    if (scanf(" %c", &conf) != 1) { while(getchar()!='\n'); continue; }
-                    while(getchar()!='\n');
+                    /* Leitura por linha para evitar leftover */
+                    char buf_conf[64];
+                    if (!fgets(buf_conf, sizeof(buf_conf), stdin) || sscanf(buf_conf, " %c", &conf) != 1) {
+                        continue;
+                    }
                     if (conf != 's' && conf != 'S') {
                         printf("Pagamento cancelado.\n");
                         continue;
@@ -1855,8 +1948,11 @@ float nova_venda() {
                     printf("\nProcessando R$%.2f em cartao...\n", parte_cartao);
                     printf("(1) Pagamento aprovado\n(0) Pagamento negado\nStatus: ");
                     int aprovado_cartao;
-                    if (scanf("%d", &aprovado_cartao) != 1) { while(getchar()!='\n'); aprovado_cartao = 0; }
-                    while(getchar()!='\n');
+                    /* Leitura por linha para evitar leftover */
+                    char buf_apc[64];
+                    if (!fgets(buf_apc, sizeof(buf_apc), stdin) || sscanf(buf_apc, "%d", &aprovado_cartao) != 1) {
+                        aprovado_cartao = 0;
+                    }
                     
                     if (aprovado_cartao == 1) {
                         ok = pagamento_cartao(parte_cartao, sale_num, 1);
