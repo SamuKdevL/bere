@@ -239,6 +239,7 @@ void menu_fechamento_caixa();
 void menu_relatorios();
 void sair();
 void menu_estoque();
+void reestocar_produto(); /* opção de reestocagem: pede código e quantidade, atualiza estoque e salva */
 void imprimir_recibo(int numero_venda);
 void menu_fechamento_dia(void);
 void atualizar_status_e_forma_venda(int numero_venda);
@@ -603,7 +604,17 @@ void menu_usuarios() {
         
         /* Leitura por linha para evitar leftover no buffer */
         char buf_menu[64];
-        if (!fgets(buf_menu, sizeof(buf_menu), stdin) || sscanf(buf_menu, "%d", &op) != 1) {
+        if (!fgets(buf_menu, sizeof(buf_menu), stdin)) {
+            op = -1;
+            printf("Opcao invalida!\n");
+            continue;
+        }
+        buf_menu[strcspn(buf_menu, "\n")] = '\0';
+        char *p = buf_menu;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '\0') continue;
+        
+        if (sscanf(p, "%d", &op) != 1) {
             op = -1;
             printf("Opcao invalida!\n");
             continue;
@@ -660,9 +671,19 @@ void cadastrar_usuario() {
 
     do {
         printf("Tipo do usuario (1 = admin, 2 = comum): ");
+        fflush(stdout);
         /* Leitura por linha para evitar leftover */
         char buf_tipo[64];
-        if (!fgets(buf_tipo, sizeof(buf_tipo), stdin) || sscanf(buf_tipo, "%d", &tipo_temp) != 1) {
+        if (!fgets(buf_tipo, sizeof(buf_tipo), stdin)) {
+            tipo_temp = 0;
+            continue;
+        }
+        buf_tipo[strcspn(buf_tipo, "\n")] = '\0';
+        char *p = buf_tipo;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '\0') continue;
+        
+        if (sscanf(p, "%d", &tipo_temp) != 1) {
             tipo_temp = 0;
         }
         if (tipo_temp != 1 && tipo_temp != 2) { printf("ERRO: tipo invalido.\n"); }
@@ -822,9 +843,19 @@ void cadastrar_produtos() {
     int escolha = 0;
     do {
         printf("Categoria (1-Alimentos, 2-Limpeza, 3-Padaria): ");
+        fflush(stdout);
         /* Leitura por linha para evitar leftover */
         char buf_cat[64];
-        if (!fgets(buf_cat, sizeof(buf_cat), stdin) || sscanf(buf_cat, "%d", &escolha) != 1) {
+        if (!fgets(buf_cat, sizeof(buf_cat), stdin)) {
+            escolha = 0;
+            continue;
+        }
+        buf_cat[strcspn(buf_cat, "\n")] = '\0';
+        char *p = buf_cat;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '\0') continue;
+        
+        if (sscanf(p, "%d", &escolha) != 1) {
             escolha = 0;
         }
         if (escolha < 1 || escolha > 3) printf("Escolha invalida. Use 1,2 ou 3.\n");
@@ -1350,11 +1381,14 @@ void abrir_caixa() {
     float valor = 0.0f;
     int valido = 0;
     
+    printf("Valor inicial do caixa: ");
+    fflush(stdout);
+    
     while (!valido) {
-        printf("Valor inicial do caixa: ");
-        fflush(stdout); /* Garante que o prompt apareça antes da leitura */
         if (!fgets(buf, sizeof(buf), stdin)) {
             printf("Erro ao ler entrada.\n");
+            printf("Valor inicial do caixa: ");
+            fflush(stdout);
             continue;
         }
         
@@ -1368,7 +1402,7 @@ void abrir_caixa() {
         if (*p == '$') p++;
         while (*p == ' ' || *p == '\t') p++;
         
-        /* Se vazio, ignora silenciosamente e pede novamente (limpa buffer) */
+        /* Se vazio, ignora silenciosamente (limpa buffer) */
         if (*p == '\0') {
             continue;
         }
@@ -1387,6 +1421,8 @@ void abrir_caixa() {
             valido = 1;
         } else {
             printf("Entrada invalida, digite apenas numeros. Ex.: 400 ou 400.00\n");
+            printf("Valor inicial do caixa: ");
+            fflush(stdout);
         }
     }
     
@@ -1468,15 +1504,43 @@ void fechar_caixa() {
 void retirada_caixa(void) {
     if (!exige_admin()) return;
     
-    float valor;
-    printf("Valor da retirada (sangria): ");
-    /* Leitura por linha para evitar leftover */
+    float valor = 0.0f;
+    int valido = 0;
     char buf[64];
-    if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%f", &valor) != 1) {
-        printf("Invalido.\n");
-        return;
+    
+    printf("Valor da retirada (sangria): ");
+    fflush(stdout);
+    
+    while (!valido) {
+        if (!fgets(buf, sizeof(buf), stdin)) {
+            printf("Erro ao ler entrada.\n");
+            return;
+        }
+        
+        buf[strcspn(buf, "\n")] = '\0';
+        char *p = buf;
+        while (*p == ' ' || *p == '\t') p++;
+        
+        if (*p == '\0') {
+            continue;
+        }
+        
+        if (sscanf(p, "%f", &valor) != 1) {
+            printf("Invalido. Digite um valor numerico.\n");
+            printf("Valor da retirada (sangria): ");
+            fflush(stdout);
+            continue;
+        }
+        
+        if (valor <= 0 || valor > caixa) {
+            printf("Valor invalido. Deve ser maior que 0 e nao exceder R$%.2f\n", caixa);
+            printf("Valor da retirada (sangria): ");
+            fflush(stdout);
+            continue;
+        }
+        
+        valido = 1;
     }
-    if (valor <= 0 || valor > caixa) { printf("Valor invalido.\n"); return; }
     
     caixa -= valor;
     total_retiradas += valor; /* acumula retiradas do período para o fechamento */
@@ -1524,6 +1588,7 @@ void menu_estoque() {
         printf("1) Listar todos os produtos\n");
         printf("2) Alerta de reposicao\n");
         printf("3) Produtos por categoria\n");
+        printf("4) Reestocar produto\n"); /* opção de reestocagem */
         printf("0) Voltar\n");
         printf("Escolha: ");
         
@@ -1554,10 +1619,103 @@ void menu_estoque() {
             else { printf("Categoria invalida.\n"); continue; }
             
             listar_produtos_por_setor(categoria);
+        } else if (op == 4) {
+            reestocar_produto(); /* opção de reestocagem */
         } else if (op != 0) {
             printf("Opcao invalida.\n");
         }
     } while (op != 0);
+}
+
+/* Função de reestocagem: pede código e quantidade, atualiza estoque e salva */
+void reestocar_produto() {
+    if (!exige_admin()) return;
+    
+    printf("\n--- REESTOCAR PRODUTO ---\n");
+    
+    if (quantidade_produtos == 0) {
+        printf("Nenhum produto cadastrado.\n");
+        return;
+    }
+    
+    /* Pedir código do produto */
+    int codigo;
+    int valido_codigo = 0;
+    char buf[64];
+    
+    while (!valido_codigo) {
+        printf("Codigo do produto: ");
+        fflush(stdout);
+        if (!fgets(buf, sizeof(buf), stdin)) {
+            printf("Erro ao ler entrada.\n");
+            return;
+        }
+        
+        /* Remove newline */
+        buf[strcspn(buf, "\n")] = '\0';
+        
+        /* Remove espaços */
+        char *p = buf;
+        while (*p == ' ' || *p == '\t') p++;
+        
+        /* Se vazio, ignora silenciosamente */
+        if (*p == '\0') {
+            continue;
+        }
+        
+        /* Tenta converter */
+        if (sscanf(p, "%d", &codigo) == 1) {
+            valido_codigo = 1;
+        } else {
+            printf("Codigo invalido. Digite apenas numeros.\n");
+        }
+    }
+    
+    /* Buscar produto */
+    int idx = -1;
+    for (int i = 0; i < quantidade_produtos; i++) {
+        if (produtos[i].codigo_produto == codigo) {
+            idx = i;
+            break;
+        }
+    }
+    
+    if (idx == -1) {
+        printf("Produto nao encontrado.\n");
+        return;
+    }
+    
+    /* Mostrar informações do produto */
+    printf("Produto: %s\n", produtos[idx].descricao);
+    printf("Estoque atual: %d\n", produtos[idx].estoque);
+    
+    /* Pedir quantidade a adicionar */
+    int quantidade;
+    int valido = 0;
+    while (!valido) {
+        printf("Quantidade a adicionar (positivo): ");
+        if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%d", &quantidade) != 1) {
+            printf("Entrada invalida. Digite um numero inteiro.\n");
+            continue;
+        }
+        
+        if (quantidade <= 0) {
+            printf("Quantidade invalida. Digite um inteiro positivo.\n");
+            continue;
+        }
+        
+        valido = 1;
+    }
+    
+    /* Atualizar estoque */
+    produtos[idx].estoque += quantidade;
+    
+    /* Salvar alterações */
+    salvar_produtos();
+    
+    /* Confirmação */
+    printf("Produto %s reestocado: +%d unidades. Estoque atual: %d\n",
+           produtos[idx].descricao, quantidade, produtos[idx].estoque);
 }
 
 void listar_produtos() {
