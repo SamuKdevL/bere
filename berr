@@ -148,6 +148,10 @@ float caixa = 0.0f;
 float abertura_caixa = 0.0f;
 int numero_venda_global = 1;
 
+/* Controle de período de caixa: marca a primeira venda após abertura */
+int numero_venda_inicio_abertura = 1;
+float total_retiradas = 0.0f; /* acumula retiradas (sangrias) do período */
+
 /* Vendas diárias em memória */
 VendaDiaria *vendas_diarias = NULL;
 int quantidade_vendas_diarias = 0;
@@ -1341,42 +1345,120 @@ void menu_principal() {
 void abrir_caixa() {
     if (!exige_admin()) return;
     
-    printf("Valor inicial do caixa: ");
-    /* Leitura por linha para evitar leftover */
-    char buf[64];
-    if (!fgets(buf, sizeof(buf), stdin) || sscanf(buf, "%f", &abertura_caixa) != 1) {
-        printf("Invalido.\n");
-        return;
+    /* Leitura robusta: aceita vírgula/R$, remove espaços, evita leftovers */
+    char buf[128];
+    float valor = 0.0f;
+    int valido = 0;
+    
+    while (!valido) {
+        printf("Valor inicial do caixa: ");
+        fflush(stdout); /* Garante que o prompt apareça antes da leitura */
+        if (!fgets(buf, sizeof(buf), stdin)) {
+            printf("Erro ao ler entrada.\n");
+            continue;
+        }
+        
+        /* Remove newline */
+        buf[strcspn(buf, "\n")] = '\0';
+        
+        /* Normaliza entrada: remove espaços e R$ do início */
+        char *p = buf;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == 'R' || *p == 'r') p++;
+        if (*p == '$') p++;
+        while (*p == ' ' || *p == '\t') p++;
+        
+        /* Se vazio, ignora silenciosamente e pede novamente (limpa buffer) */
+        if (*p == '\0') {
+            continue;
+        }
+        
+        /* Substitui vírgula por ponto */
+        for (char *c = p; *c; c++) {
+            if (*c == ',') *c = '.';
+        }
+        
+        /* Tenta converter */
+        char *endptr;
+        valor = strtof(p, &endptr);
+        
+        /* Valida: deve ter consumido caracteres e valor deve ser > 0 */
+        if (endptr != p && valor > 0.0f) {
+            valido = 1;
+        } else {
+            printf("Entrada invalida, digite apenas numeros. Ex.: 400 ou 400.00\n");
+        }
     }
+    
+    abertura_caixa = valor;
     caixa = abertura_caixa;
+    
+    /* Registrando início do período de caixa e zerando acumuladores */
+    numero_venda_inicio_abertura = numero_venda_global;
+    total_retiradas = 0.0f;
     fechamento.abertura = abertura_caixa;
+    fechamento.total_dia = 0.0f;
+    fechamento.valor_dinheiro = 0.0f;
+    fechamento.valor_cartao = 0.0f;
+    fechamento.valor_b = 0.0f;
+    fechamento.quantidade_vendas = 0;
+    
     printf("Caixa aberto com R$%.2f\n", caixa);
 }
 
 void fechar_caixa() {
     if (!exige_admin()) return;
     
-    float total_pag = 0.0f, total_din = 0.0f, total_cart = 0.0f;
+    /* Somando apenas pagamentos/vendas desde numero_venda_inicio_abertura */
+    float soma_dinheiro = 0.0f, soma_cartao = 0.0f, soma_b = 0.0f;
+    
+    /* Percorrer pagamentos e somar somente os do período atual */
     for (int i = 0; i < quantidade_pagamentos; ++i) {
-        total_pag += pagamentos[i].total;
-        if (pagamentos[i].tipo == 'd') total_din += pagamentos[i].total;
-        else if (pagamentos[i].tipo == 'c') total_cart += pagamentos[i].total;
+        int nv = pagamentos[i].numero_venda;
+        if (nv < numero_venda_inicio_abertura) continue; /* ignora pagamentos anteriores */
+        
+        if (pagamentos[i].tipo == 'd') soma_dinheiro += pagamentos[i].total;
+        else if (pagamentos[i].tipo == 'c') soma_cartao += pagamentos[i].total;
+        else if (pagamentos[i].tipo == 'b') soma_b += pagamentos[i].total; /* misto */
     }
     
-    fechamento.total_dia = total_pag;
-    fechamento.quantidade_vendas = numero_venda_global - 1;
-    fechamento.valor_dinheiro = total_din;
-    fechamento.valor_cartao = total_cart;
+    /* Contar quantidade de vendas do período */
+    int qtd_vendas_periodo = 0;
+    for (int i = 0; i < quantidade_vendas; ++i) {
+        if (vendas[i].numero_venda >= numero_venda_inicio_abertura)
+            qtd_vendas_periodo++;
+    }
     
-    printf("\n--- FECHAMENTO ---\n");
-    printf("Abertura: R$%.2f\n", fechamento.abertura);
-    printf("Total dia: R$%.2f\n", fechamento.total_dia);
-    printf("  Dinheiro: R$%.2f\n", fechamento.valor_dinheiro);
-    printf("  Cartao: R$%.2f\n", fechamento.valor_cartao);
+    /* Atualiza struct de fechamento com os valores filtrados */
+    fechamento.valor_dinheiro = soma_dinheiro;
+    fechamento.valor_cartao = soma_cartao;
+    fechamento.valor_b = soma_b;
+    fechamento.total_dia = soma_dinheiro + soma_cartao + soma_b;
+    fechamento.quantidade_vendas = qtd_vendas_periodo;
+    
+    /* Caixa final = abertura + apenas dinheiro - retiradas (cartão não entra no físico) */
+    /* Nota: pagamentos mistos são registrados separadamente como 'd' e 'c', então soma_b
+       representa registros legados tipo 'b' que assumimos ter parte em dinheiro */
+    float dinheiro_fisico = soma_dinheiro + (soma_b * 0.5f); /* estimativa conservadora */
+    fechamento.caixa_final = fechamento.abertura + dinheiro_fisico - total_retiradas;
+    
+    printf("\n========================================\n");
+    printf("         FECHAMENTO DE CAIXA\n");
+    printf("========================================\n");
+    printf("Abertura:        R$ %.2f\n", fechamento.abertura);
+    printf("Total dia:       R$ %.2f\n", fechamento.total_dia);
+    printf("  Dinheiro:      R$ %.2f\n", fechamento.valor_dinheiro);
+    printf("  Cartao:        R$ %.2f\n", fechamento.valor_cartao);
+    if (fechamento.valor_b > 0.01f)
+        printf("  Misto:         R$ %.2f\n", fechamento.valor_b);
+    printf("Retiradas:       R$ %.2f\n", total_retiradas);
+    printf("Caixa final:     R$ %.2f\n", fechamento.caixa_final);
+    printf("Vendas no per.:  %d\n", fechamento.quantidade_vendas);
+    printf("========================================\n");
     
     exibir_lucro_por_setor();
     
-    printf("Caixa fechado. Zerando.\n");
+    printf("\nCaixa fechado. Zerando.\n");
     salvar_lucro_setor_arquivo();
     zerar_lucro_dia_atual();
     caixa = 0.0f;
@@ -1395,7 +1477,10 @@ void retirada_caixa(void) {
         return;
     }
     if (valor <= 0 || valor > caixa) { printf("Valor invalido.\n"); return; }
+    
     caixa -= valor;
+    total_retiradas += valor; /* acumula retiradas do período para o fechamento */
+    
     printf("Retirada de R$%.2f. Caixa: R$%.2f\n", valor, caixa);
 }
 
@@ -1631,6 +1716,8 @@ int main(void) {
     }
 
     printf("Sistema Mercearia - carregado. Caixa atual: R$%.2f\n", caixa);
+    /* Garante buffer limpo antes do menu principal para evitar leitura de \n residual */
+    int c; while ((c = getchar()) != '\n' && c != EOF);
     menu_principal();
 
     return 0;
