@@ -45,11 +45,11 @@ typedef struct {
 } ItemCarrinho;
 
 /*
-  Venda: acrescentei campos mínimos que eram referenciados em várias
-  funções posteriores (dia, mes, ano, cpf_cliente, nome_cliente,
-  preco_unitario e forma_pagamento).
-  Mantive a maioria do seu formato original.
-*/
+ * Struct Venda: Armazena informações completas de cada item vendido
+ * Inclui dados temporais (dia, mes, ano) para relatórios por período
+ * Permite associar venda a cliente através do CPF
+ * Status e forma de pagamento são atualizados conforme processamento
+ */
 typedef struct {
     int numero_venda;
     int codigo_produto;
@@ -96,7 +96,7 @@ typedef struct {
     float padaria_dia;
 } Setor;
 
-/* NOVO: Struct para acumular lucros diários por setor */
+/* Struct para acumular lucros diários por setor */
 typedef struct {
     float receita_alimentos;
     float custo_alimentos;
@@ -152,7 +152,7 @@ int numero_venda_global = 1;
 VendaDiaria *vendas_diarias = NULL;
 int quantidade_vendas_diarias = 0;
 
-/* NOVO: Acumulador de lucros por setor do dia atual */
+/* Acumulador de lucros por setor do dia atual */
 LucroSetor lucro_dia_atual = {0};
 
 /* ======================= Protótipos ======================= */
@@ -244,7 +244,7 @@ int solicitar_confirmacao_admin(void);
 float desconto_padrao_dinheiro(void);
 void listar_alerta_reposicao(void);
 void registrar_venda_diaria(const char *setor_nome, const char *descricao, int quantidade, float total, float lucro);
-/* NOVO: Funções para lucro por setor */
+/* Funções para controle de lucro por setor */
 void acumular_lucro_setor(const char *categoria, float preco_venda, float preco_compra, int quantidade);
 void exibir_lucro_por_setor(void);
 void salvar_lucro_setor_arquivo(void);
@@ -254,13 +254,19 @@ void ajustar_lucro_pos_desconto(int numero_venda, float valor_desconto);
 
 /* ======================= Implementações ======================= */
 
-/* helpers para reduzir duplicacao e tratar realloc/entrada */
+/*
+ * Funções auxiliares para operações comuns
+ * Criadas para evitar repetição de código e centralizar tratamento de erros
+ */
+
+/* Wrapper seguro para realloc - encerra programa se falhar a alocação */
 void *xrealloc(void *ptr, size_t nmemb, size_t size) {
     void *p = realloc(ptr, nmemb * size);
     if (!p) { fprintf(stderr, "Erro: realloc falhou ao alocar %lu elementos de tamanho %lu\n", (unsigned long)nmemb, (unsigned long)size); exit(1); }
     return p;
 }
 
+/* Le inteiro com validação, repetindo até entrada válida */
 int read_int_prompt(const char *prompt) {
     char buf[64];
     int v;
@@ -272,24 +278,31 @@ int read_int_prompt(const char *prompt) {
     }
 }
 
+/* Le float com validação, aceita vírgula ou ponto como separador decimal */
 float read_float_prompt(const char *prompt) {
     char buf[64];
     float v;
     for (;;) {
         if (prompt && *prompt) printf("%s", prompt);
         if (!fgets(buf, sizeof(buf), stdin)) return 0.0f;
+        /* Converte vírgula em ponto para facilitar entrada do usuário */
         for (char *c = buf; *c; ++c) if (*c == ',') *c = '.';
         if (sscanf(buf, "%f", &v) == 1) return v;
         printf("Entrada invalida, tente novamente.\n");
     }
 }
 
+/* Le uma linha de texto removendo o \n final */
 void read_line(char *dst, size_t n, const char *prompt) {
     if (prompt && *prompt) printf("%s", prompt);
     if (!fgets(dst, n, stdin)) { dst[0] = '\0'; return; }
     dst[strcspn(dst, "\n")] = '\0';
 }
 
+/* 
+ * Verifica se uma data está dentro de um intervalo
+ * Converte para inteiro no formato AAAAMMDD para comparação simples
+ */
 int data_no_intervalo(int d, int m, int a, int di, int mi, int ai, int df, int mf, int af) {
     int data = a * 10000 + m * 100 + d;
     int inicio = ai * 10000 + mi * 100 + di;
@@ -381,7 +394,11 @@ void salvar_clientes() {
     fclose(arquivo);
 }
 
-/* Produtos: Codigo|Descricao|PrecoCompra|Margem|Categoria|EstoqueMin|Estoque\n */
+/* 
+ * Carrega produtos do arquivo texto
+ * Formato: Codigo|Descricao|PrecoCompra|Margem|Categoria|EstoqueMin|Estoque
+ * O preço de venda é calculado automaticamente: preco_compra * (1 + margem/100)
+ */
 void carregar_produtos() {
     FILE *arquivo = fopen("produtos.txt", "r");
     if (!arquivo) return;
@@ -389,6 +406,7 @@ void carregar_produtos() {
     char linha[512];
     while (fgets(linha, sizeof(linha), arquivo)) {
         Produto p;
+        /* Zera struct antes de ler para evitar lixo em campos não preenchidos */
         memset(&p, 0, sizeof(Produto));
         int campos = sscanf(linha, "%d|%39[^|]|%f|%f|%19[^|]|%d|%d",
                             &p.codigo_produto, p.descricao, &p.preco_compra, &p.margem_lucro,
@@ -402,9 +420,11 @@ void carregar_produtos() {
     fclose(arquivo);
 }
 
-/* binary file with full product records (estoque.dat)
- * AVISO: Este arquivo depende do layout exato da struct Produto.
- * Mudanças na struct invalidarão o arquivo. */
+/* 
+ * Carrega estoque do arquivo binário (estoque.dat)
+ * IMPORTANTE: Formato binário depende da estrutura exata de Produto
+ * Alterações na struct exigem regeneração do arquivo
+ */
 void carregar_estoque_dat() {
     FILE *f = fopen("estoque.dat", "rb");
     if (!f) return; // sem arquivo, ok
@@ -510,9 +530,11 @@ void carregar_pagamentos() {
     fclose(arquivo);
 }
 
-/* vendas_diarias: binary file with VendaDiaria records
- * AVISO: Este arquivo depende do layout exato da struct VendaDiaria.
- * Mudanças na struct invalidarão o arquivo. */
+/* 
+ * Carrega histórico de vendas diárias (vendas_diarias.dat)
+ * IMPORTANTE: Formato binário depende da estrutura exata de VendaDiaria
+ * Alterações na struct exigem regeneração do arquivo
+ */
 void carregar_vendas_diarias() {
     FILE *f = fopen("vendas_diarias.dat", "rb");
     if (!f) return;
@@ -539,7 +561,7 @@ void salvar_vendas_diarias() {
 
 /* ======================= Cadastros e validações ======================= */
 
-/* NOVO: Lista todos os usuários cadastrados */
+/* Lista todos os usuários cadastrados com suas permissões */
 void listar_usuarios() {
     if (quantidade_usuarios == 0) {
         printf("\nNenhum usuario cadastrado.\n");
@@ -563,7 +585,7 @@ void listar_usuarios() {
     printf("Total: %d usuario(s)\n\n", quantidade_usuarios);
 }
 
-/* NOVO: Menu de gerenciamento de usuários */
+/* Menu de gerenciamento de usuários (acesso restrito a admin) */
 void menu_usuarios() {
      if (!solicitar_confirmacao_admin()) return;
      
@@ -698,7 +720,14 @@ void cadastrar_clientes() {
 }
 
 /* ler_cpf_valido: REQUER que cpf_destino tenha capacidade para pelo menos 15 bytes (11 dígitos + '\0' + margem) */
-/* IMPORTANTE: cpf_destino deve ter pelo menos 15 bytes alocados */
+/* 
+ * Lê e valida CPF do cliente
+ * Verifica:
+ * - Exatamente 11 dígitos
+ * - Apenas números
+ * - CPF não duplicado no sistema
+ * IMPORTANTE: cpf_destino deve ter pelo menos 15 bytes alocados
+ */
 void ler_cpf_valido(char *cpf_destino, Cliente *clientes_local, int quantidade_clientes_local) {
     char cpf_temp[32];
     int cpf_valido;
@@ -727,6 +756,7 @@ void ler_cpf_valido(char *cpf_destino, Cliente *clientes_local, int quantidade_c
     snprintf(cpf_destino, 15, "%s", cpf_temp);
 }
 
+/* Versao simplificada de read_int_prompt com mensagem customizada */
 int ler_inteiro_valido(const char *mensagem) {
     char buffer[64];
     int numero;
@@ -738,7 +768,7 @@ int ler_inteiro_valido(const char *mensagem) {
     }
 }
 
-/* Lê um inteiro positivo com validação */
+/* Le inteiro garantindo que seja >= 0 */
 void ler_inteiro_positivo(const char *mensagem, int *valor) {
     int temp;
     do {
@@ -882,7 +912,7 @@ void registrar_venda_diaria(const char *setor_nome, const char *descricao, int q
     vendas_diarias[quantidade_vendas_diarias++] = vd;
     salvar_vendas_diarias();
     
-    /* NOVO: acumula lucro no acumulador do dia (protege contra divisão por zero) */
+    /* Acumula lucro no acumulador do dia (protege contra divisão por zero) */
     if (quantidade > 0) {
         acumular_lucro_setor(setor_nome, total / quantidade, (total - lucro) / quantidade, quantidade);
     }
@@ -1010,6 +1040,10 @@ void atualizar_status_e_forma_venda(int numero_venda) {
     salvar_vendas();
 }
 
+/* 
+ * Imprime recibo detalhado da venda
+ * Lista todos os itens, valores, forma de pagamento e troco
+ */
 void imprimir_recibo(int numero_venda) {
     float total = 0.0f, troco_total = 0.0f;
     printf("\n===== RECIBO VENDA %d =====\n", numero_venda);
@@ -1250,8 +1284,14 @@ void menu_relatorios() {
     } while (op != 0);
 }
 
+/* 
+ * Encerra sistema com segurança
+ * Garante que todos os dados sejam salvos antes de sair
+ * Libera toda memória alocada para evitar vazamentos
+ */
 void sair() {
     printf("Salvando e encerrando...\n");
+    /* Salva todos os dados modificados nos arquivos */
     salvar_usuarios();
     salvar_clientes();
     salvar_produtos();
@@ -1262,7 +1302,7 @@ void sair() {
     salvar_estoque_dat();
     salvar_numero_venda_global();
     
-    /* Libera memória alocada */
+    /* Libera toda memória alocada dinamicamente */
     if (usuarios) { free(usuarios); usuarios = NULL; }
     if (clientes) { free(clientes); clientes = NULL; }
     if (produtos) { free(produtos); produtos = NULL; }
@@ -1272,6 +1312,10 @@ void sair() {
     
     exit(0);
 }
+/* 
+ * Menu principal do sistema
+ * Centraliza acesso a todas as funcionalidades
+ */
 void menu_principal() {
     int op = 0;
     do {
@@ -1534,11 +1578,20 @@ int fazer_login(void) {
 
 /* ======================= MAIN ======================= */
 
+/* 
+ * Função principal
+ * Sequência de inicialização:
+ * 1. Carrega todos os dados dos arquivos
+ * 2. Prioriza estoque.dat sobre produtos.txt (mais atualizado)
+ * 3. Cria usuário admin padrão se não existir nenhum
+ * 4. Exige login antes de permitir uso do sistema
+ * 5. Inicia menu principal
+ */
 int main(void) {
     carregar_usuarios();
     carregar_clientes();
     
-    // PRIORIDADE: carregar estoque.dat (mais recente)
+    /* Prioriza arquivo binário que contém estoque mais atualizado */
     if (estoque_dat_existe()) {
         carregar_estoque_dat();
     } else {
@@ -1758,7 +1811,7 @@ float nova_venda() {
                     }
                     if (idx == -1) { printf("Produto nao encontrado neste setor.\n"); continue; }
                     
-                    /* NOVO: Validação de estoque zero */
+                    /* Validação de estoque zero */
                     if (produtos[idx].estoque <= 0) { 
                         printf("ERRO: Produto sem estoque! Nao e possivel realizar a venda.\n"); 
                         continue; 
@@ -1767,7 +1820,7 @@ float nova_venda() {
                     int qtd = read_int_prompt("Quantidade: ");
                     if (qtd <= 0) { printf("Quantidade invalida.\n"); continue; }
                     
-                    /* NOVO: Alerta de estoque insuficiente */
+                    /* Alerta de estoque insuficiente */
                     if (qtd > produtos[idx].estoque) {
                         printf("\n*** ALERTA DE ESTOQUE ***\n");
                         printf("Voce deseja vender %d unidades, mas so existem %d em estoque!\n", qtd, produtos[idx].estoque);
@@ -1784,7 +1837,7 @@ float nova_venda() {
                         }
                     }
                     
-                    /* NOVO: Alerta de estoque mínimo */
+                    /* Alerta de estoque mínimo */
                     if ((produtos[idx].estoque - qtd) <= produtos[idx].estoque_minimo) {
                         printf("\n*** ALERTA: Estoque do produto '%s' atingira o minimo apos esta venda! ***\n", produtos[idx].descricao);
                         printf("Estoque atual: %d | Minimo: %d | Apos venda: %d\n\n", 
@@ -1846,7 +1899,7 @@ float nova_venda() {
             for (int i = 0; i < quantidade_vendas; ++i)
                 if (vendas[i].numero_venda == sale_num) total_venda += vendas[i].total_item;
 
-            /* NOVO: Solicitar desconto opcional */
+            /* Solicitar desconto opcional */
             printf("\n=== TOTAL DO CARRINHO: R$%.2f ===\n", total_venda);
             printf("Aplicar desconto? Digite o percentual (0 para nenhum desconto): ");
             float desconto_percentual = 0.0f;
